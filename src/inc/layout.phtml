@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+
+<div id="container">
+    <nav>
+        <ul>
+                <li><a href="?page=home" class="<?php echo ($page == 'home'? 'active' : '');?>">Home</a></li>
+                <li><a href="?page=register" class="<?php echo ($page == 'register'? 'active' : '');?>">register</a></li>
+        </ul>
+    </nav>
+<section id="main">
+    <?php
+        include $main_content;
+    ?>
+</section>
+</div>

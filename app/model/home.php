@@ -1,4 +1,0 @@
-<?php
-
-$title = 'home page';
-
