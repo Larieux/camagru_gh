@@ -16,10 +16,13 @@ if (file_exists($model))
     require $model;
 }
 
+$main_content = $_404;
+
 if(file_exists($view))
 {
-    require $view;
+    $main_content = $view;
 }
-else {
-    require $_404;
-}
+
+include $config['VIEW_PATH']. 'layout.phtml';
+
+?>

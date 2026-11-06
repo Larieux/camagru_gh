@@ -1,0 +1,29 @@
+nav {
+    background:darkgreen;
+    color:white;
+}
+
+nav ul li {
+    display:inline-block;
+    padding-right: 10px;
+}
+
+nav li a:visited, nav li a:link{
+    color:white;
+    text-decoration: none;
+}
+
+nav li a:hover{
+    background:lightgreen;
+}
+
+#container{
+    border: 1px solid darkgrey;
+    white-space: 800px;
+    margin: 5px auto;
+    min-height: 600px;
+}
+
+.active{
+    background-color: black;
+}
