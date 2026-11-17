@@ -311,18 +311,3 @@ function validate(array $data, array $fields, array $messages = []): array
 
     return $errors;
 }
-
-function redirect_to(string $url): void
-{
-    header('Location:' . $url);
-    exit;
-}
-
-function redirect_with(string $url, array $items): void
-{
-    foreach ($items as $key => $value) {
-        $_SESSION[$key] = $value;
-    }
-
-    redirect_to($url);
-}

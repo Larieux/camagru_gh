@@ -1,0 +1,13 @@
+# Environment variables
+.env
+
+# User-generated images
+/storage/images/*
+!/storage/images/.gitkeep
+
+# IDE
+.vscode/
+
+# Operating system
+.DS_Store
+Thumbs.db
