@@ -7,4 +7,4 @@ $config = [
     'INC_PATH' => APPLICATION_PATH . DS . 'src/inc' . DS,
 ];
 
-require $config['LIB_PATH'] . 'functions.php';
+require $config['LIB_PATH'] . 'bootstrap.php';

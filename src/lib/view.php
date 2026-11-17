@@ -13,3 +13,8 @@ function view(string $filename, array $data = []): void
     }
     require_once __DIR__ . '/../inc/' . $filename . '.phtml';
 }
+
+function error_class(array $errors, string $field): string
+{
+    return isset($errors[$field]) ? 'error' : '';
+}
