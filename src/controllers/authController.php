@@ -1,313 +1,471 @@
 <?php
 
-function is_post_request(): bool
+require_once __DIR__ . '/../models/User.php';
+
+class AuthController
 {
-    return strtoupper($_SERVER['REQUEST_METHOD']) === 'POST';
-}
+    private User $user;
 
-function is_get_request(): bool
-{
-    return strtoupper($_SERVER['REQUEST_METHOD']) === 'GET';
-}
-
-const FILTERS = [
-    'string' => FILTER_SANITIZE_FULL_SPECIAL_CHARS,
-    'string[]' => [
-        'filter' => FILTER_SANITIZE_FULL_SPECIAL_CHARS,
-        'flags' => FILTER_REQUIRE_ARRAY
-    ],
-    'email' => FILTER_SANITIZE_EMAIL,
-    'int' => [
-        'filter' => FILTER_SANITIZE_NUMBER_INT,
-        'flags' => FILTER_REQUIRE_SCALAR
-    ],
-    'int[]' => [
-        'filter' => FILTER_SANITIZE_NUMBER_INT,
-        'flags' => FILTER_REQUIRE_ARRAY
-    ],
-    'float' => [
-        'filter' => FILTER_SANITIZE_NUMBER_FLOAT,
-        'flags' => FILTER_FLAG_ALLOW_FRACTION
-    ],
-    'float[]' => [
-        'filter' => FILTER_SANITIZE_NUMBER_FLOAT,
-        'flags' => FILTER_REQUIRE_ARRAY
-    ],
-    'url' => FILTER_SANITIZE_URL,
-];
-
-const DEFAULT_VALIDATION_ERRORS = [
-    'required' => 'Please enter the %s',
-    'email' => 'The %s is not a valid email address',
-    'min' => 'The %s must have at least %s characters',
-    'max' => 'The %s must have at most %s characters',
-    'between' => 'The %s must have between %d and %d characters',
-    'same' => 'The %s must match with %s',
-    'alphanumeric' => 'The %s should have only letters and numbers',
-    'secure' => 'The %s must have between 8 and 64 characters and contain at least one number, one upper case letter, one lower case letter and one special character',
-    'unique' => 'The %s already exists',
-];
-
-/**
-* Recursively trim strings in an array
-* @param array $items
-* @return array
-*/
-function array_trim(array $items): array
-{
-    return array_map(function ($item) {
-        if (is_string($item)) {
-            return trim($item);
-        } elseif (is_array($item)) {
-            return array_trim($item);
-        } else
-            return $item;
-    }, $items);
-}
-
-/**
-* Sanitize the inputs based on the rules an optionally trim the string
-* @param array $inputs
-* @param array $fields
-* @param int $default_filter FILTER_SANITIZE_FULL_SPECIAL_CHARS
-* @param array $filters FILTERS
-* @param bool $trim
-* @return array
-*/
-function sanitize(array $inputs, array $fields = [], int $default_filter = FILTER_SANITIZE_FULL_SPECIAL_CHARS, array $filters = FILTERS, bool $trim = true): array
-{
-    if ($fields) {
-        $options = array_map(fn($field) => $filters[$field], $fields);
-        $data = filter_var_array($inputs, $options);
-    } else {
-        $data = filter_var_array($inputs, $default_filter);
+    public function __construct(PDO $db)
+    {
+        $this->user = new User($db);
     }
 
-    return $trim ? array_trim($data) : $data;
-}
+    public function register(): void
+    {
+        require_guest();
 
-/**
- * Return true if a string is not empty
- * @param array $data
- * @param string $field
- * @return bool
- */
-function is_required(array $data, string $field): bool
-{
-    return isset($data[$field]) && trim($data[$field]) !== '';
-}
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            render('register', [
+                'title' => 'Create an accountbite',
+                'testMessage' => 'Hello from the controller!'###tmp
+            ]);
+            return;
+        }
 
-/**
- * Return true if the value is a valid email
- * @param array $data
- * @param string $field
- * @return bool
- */
-function is_email(array $data, string $field): bool
-{
-    if (empty($data[$field])) {
-        return true;
-    }
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            render('register', ['errors' => ['Invalid request.']]);
+            return;
+        }
 
-    return filter_var($data[$field], FILTER_VALIDATE_EMAIL);
-}
+        $username = trim($_POST['username'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $password = $_POST['password'] ?? '';
 
-/**
- * Return true if a string has at least min length
- * @param array $data
- * @param string $field
- * @param int $min
- * @return bool
- */
-function is_min(array $data, string $field, int $min): bool
-{
-    if (!isset($data[$field])) {
-        return true;
-    }
+        $errors = [];
 
-    return mb_strlen($data[$field]) >= $min;
-}
+        if (!preg_match('/^[a-zA-Z0-9_-]{3,50}$/', $username)) {
+            $errors[] = 'Username must be 3-50 characters and use only letters, numbers, underscores or hyphens.';
+        }
 
-/**
- * Return true if a string cannot exceed max length
- * @param array $data
- * @param string $field
- * @param int $max
- * @return bool
- */
-function is_max(array $data, string $field, int $max): bool
-{
-    if (!isset($data[$field])) {
-        return true;
-    }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Invalid email address.';
+        }
 
-    return mb_strlen($data[$field]) <= $max;
-}
+        if (strlen($password) < 12) {
+            $errors[] = 'Password must contain at least 12 characters.';
+        }
 
-/**
- * @param array $data
- * @param string $field
- * @param int $min
- * @param int $max
- * @return bool
- */
-function is_between(array $data, string $field, int $min, int $max): bool
-{
-    if (!isset($data[$field])) {
-        return true;
-    }
+        if ($this->user->findByUsername($username)) {
+            $errors[] = 'Username is already taken.';
+        }
 
-    $len = mb_strlen($data[$field]);
-    return $len >= $min && $len <= $max;
-}
+        if ($this->user->findByEmail($email)) {
+            $errors[] = 'Email is already registered.';
+        }
 
-/**
- * Return true if a string equals the other
- * @param array $data
- * @param string $field
- * @param string $other
- * @return bool
- */
-function is_same(array $data, string $field, string $other): bool
-{
-    if (isset($data[$field], $data[$other])) {
-        return $data[$field] === $data[$other];
-    }
+        if (!empty($errors)) {
+            render('register', [
+                'errors' => $errors,
+                'username' => $username,
+                'email' => $email
+            ]);
+            return;
+        }
 
-    if (!isset($data[$field]) && !isset($data[$other])) {
-        return true;
-    }
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
-    return false;
-}
-
-/**
- * Return true if a string is alphanumeric
- * @param array $data
- * @param string $field
- * @return bool
- */
-function is_alphanumeric(array $data, string $field): bool
-{
-    if (!isset($data[$field])) {
-        return true;
-    }
-
-    return ctype_alnum($data[$field]);
-}
-
-/**
- * Return true if a password is secure
- * @param array $data
- * @param string $field
- * @return bool
- */
-function is_secure(array $data, string $field): bool
-{
-    if (!isset($data[$field])) {
-        return false;
-    }
-
-    $pattern = "#.*^(?=.{8,64})(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*\W).*$#";
-    return preg_match($pattern, $data[$field]);
-}
-
-
-/**
- * Connect to the database and returns an instance of PDO class
- * or false if the connection fails
- *
- * @return PDO
- */
-function db(): PDO
-{
-    static $pdo;
-    if (!$pdo) {
-        $pdo = new PDO(
-            sprintf("mysql:host=%s;dbname=%s;charset=UTF8", DB_HOST, DB_NAME),
-            DB_USER,
-            DB_PASSWORD,
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        $userId = $this->user->create(
+            $username,
+            $email,
+            $passwordHash
         );
+
+        $token = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $token);
+
+        $expiresAt = date('Y-m-d H:i:s', time() + 3600);
+
+        $this->user->createToken(
+            $userId,
+            $tokenHash,
+            'verification',
+            $expiresAt
+        );
+
+        $verificationUrl = $this->buildTokenUrl(
+            '/verify',
+            $token
+        );
+
+        $this->sendMail(
+            $email,
+            'Confirm your Camagru account',
+            "Please confirm your account using this link:\n\n"
+            . $verificationUrl
+        );
+
+        render('verify_notice');
     }
-    return $pdo;
-}
 
-/**
- * Return true if the $value is unique in the column of a table
- * @param array $data
- * @param string $field
- * @param string $table
- * @param string $column
- * @return bool
- */
-function is_unique(array $data, string $field, string $table, string $column): bool
-{
-    if (!isset($data[$field])) {
-        return true;
+    public function login(): void
+    {
+        require_guest();
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            render('login');
+            return;
+        }
+
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            render('login', ['errors' => ['Invalid request.']]);
+            return;
+        }
+
+        $username = trim($_POST['username'] ?? '');
+        $password = $_POST['password'] ?? '';
+
+        $user = $this->user->findByUsername($username);
+
+        if (!$user || !password_verify($password, $user['password'])) {
+            render('login', [
+                'errors' => ['Invalid username or password.']
+            ]);
+            return;
+        }
+
+        if (!$user['is_verified']) {
+            render('login', [
+                'errors' => ['Please verify your email before logging in.']
+            ]);
+            return;
+        }
+
+        session_regenerate_id(true);
+
+        $_SESSION['user_id'] = (int)$user['id'];
+
+        header('Location: /');
+        exit;
     }
 
-    $sql = "SELECT $column FROM $table WHERE $column = :value";
+    public function logout(): void
+    {
+        require_auth();
 
-    $stmt = db()->prepare($sql);
-    $stmt->bindValue(":value", $data[$field]);
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            exit;
+        }
 
-    $stmt->execute();
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            exit('Invalid request.');
+        }
 
-    return $stmt->fetchColumn() === false;
-}
+        $_SESSION = [];
 
-/**
- * Validate
- * @param array $data
- * @param array $fields
- * @param array $messages
- * @return array
- */
-function validate(array $data, array $fields, array $messages = []): array
-{
-    // Split the array by a separator, trim each element
-    // and return the array
-    $split = fn($str, $separator) => array_map('trim', explode($separator, $str));
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
 
-    // get the message rules
-    $rule_messages = array_filter($messages, fn($message) => is_string($message));
-    // overwrite the default message
-    $validation_errors = array_merge(DEFAULT_VALIDATION_ERRORS, $rule_messages);
+            setcookie(
+                session_name(),
+                '',
+                time() - 42000,
+                $params['path'],
+                $params['domain'],
+                $params['secure'],
+                $params['httponly']
+            );
+        }
 
-    $errors = [];
+        session_destroy();
 
-    foreach ($fields as $field => $option) {
+        header('Location: /');
+        exit;
+    }
 
-        $rules = $split($option, '|');
+    public function verify(): void
+    {
+        $token = $_GET['token'] ?? '';
 
-        foreach ($rules as $rule) {
-            // get rule name params
-            $params = [];
-            // if the rule has parameters e.g., min: 1
-            if (strpos($rule, ':')) {
-                [$rule_name, $param_str] = $split($rule, ':');
-                $params = $split($param_str, ',');
-            } else {
-                $rule_name = trim($rule);
-            }
-            // by convention, the callback should be is_<rule> e.g.,is_required
-            $fn = 'is_' . $rule_name;
+        if (!is_string($token) || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+            render('verification_result', [
+                'message' => 'Invalid verification link.'
+            ]);
+            return;
+        }
 
-            if (is_callable($fn)) {
-                $pass = $fn($data, $field, ...$params);
-                if (!$pass) {
-                    // get the error message for a specific field and rule if exists
-                    // otherwise get the error message from the $validation_errors
-                    $errors[$field] = sprintf(
-                        $messages[$field][$rule_name] ?? $validation_errors[$rule_name],
-                        $field,
-                        ...$params
-                    );
-                }
+        $tokenHash = hash('sha256', $token);
+
+        $record = $this->user->findValidToken(
+            $tokenHash,
+            'verification'
+        );
+
+        if (!$record) {
+            render('verification_result', [
+                'message' => 'This verification link is invalid or expired.'
+            ]);
+            return;
+        }
+
+        $this->user->verifyUser((int)$record['user_id']);
+        $this->user->deleteToken((int)$record['id']);
+
+        render('verification_result', [
+            'message' => 'Your account is verified. You can now log in.'
+        ]);
+    }
+
+    public function forgotPassword(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            render('forgot_password');
+            return;
+        }
+
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            exit('Invalid request.');
+        }
+
+        $email = trim($_POST['email'] ?? '');
+
+        if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $user = $this->user->findByEmail($email);
+
+            if ($user && $user['is_verified']) {
+                $token = bin2hex(random_bytes(32));
+                $tokenHash = hash('sha256', $token);
+
+                $expiresAt = date('Y-m-d H:i:s', time() + 3600);
+
+                $this->user->createToken(
+                    (int)$user['id'],
+                    $tokenHash,
+                    'password_reset',
+                    $expiresAt
+                );
+
+                $url = $this->buildTokenUrl(
+                    '/reset-password',
+                    $token
+                );
+
+                $this->sendMail(
+                    $email,
+                    'Reset your Camagru password',
+                    "Reset your password using this link:\n\n" . $url
+                );
             }
         }
+
+        // Same response whether or not the email exists.
+        render('forgot_password_notice');
     }
 
-    return $errors;
+    public function resetPassword(): void
+    {
+        $token = $_GET['token'] ?? '';
+
+        if (!is_string($token) || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+            render('reset_password', [
+                'errors' => ['Invalid reset link.']
+            ]);
+            return;
+        }
+
+        $record = $this->user->findValidToken(
+            hash('sha256', $token),
+            'password_reset'
+        );
+
+        if (!$record) {
+            render('reset_password', [
+                'errors' => ['This link is invalid or expired.']
+            ]);
+            return;
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            render('reset_password', ['token' => $token]);
+            return;
+        }
+
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            exit('Invalid request.');
+        }
+
+        $password = $_POST['password'] ?? '';
+        $confirmation = $_POST['password_confirmation'] ?? '';
+
+        if (!$this->validatePassword($password, $confirmation)) {
+            render('reset_password', [
+                'token' => $token,
+                'errors' => ['Password does not meet requirements.']
+            ]);
+            return;
+        }
+
+        $this->user->updatePassword(
+            (int)$record['user_id'],
+            password_hash($password, PASSWORD_DEFAULT)
+        );
+
+        $this->user->deleteToken((int)$record['id']);
+
+        render('reset_password_notice');
+    }
+
+    public function updateProfile(): void
+    {
+        require_auth();
+
+        $userId = current_user_id();
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            render('profile', [
+                'user' => $this->user->findById($userId)
+            ]);
+            return;
+        }
+
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            exit('Invalid request.');
+        }
+
+        $username = trim($_POST['username'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+
+        $errors = [];
+
+        if (!preg_match('/^[a-zA-Z0-9_-]{3,50}$/', $username)) {
+            $errors[] = 'Invalid username.';
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Invalid email.';
+        }
+
+        $existingUsername = $this->user->findByUsername($username);
+        $existingEmail = $this->user->findByEmail($email);
+
+        if ($existingUsername && (int)$existingUsername['id'] !== $userId) {
+            $errors[] = 'Username already taken.';
+        }
+
+        if ($existingEmail && (int)$existingEmail['id'] !== $userId) {
+            $errors[] = 'Email already taken.';
+        }
+
+        if ($errors) {
+            render('profile', [
+                'errors' => $errors,
+                'username' => $username,
+                'email' => $email
+            ]);
+            return;
+        }
+
+        $this->user->updateUsername($userId, $username);
+
+        // If the email changes, it should be re-verified.
+        $currentUser = $this->user->findById($userId);
+
+        if ($currentUser['email'] !== $email) {
+            $this->user->updateEmail($userId, $email);
+
+            // Generate and send a new verification token here.
+            // Consider disabling access until re-verification.
+        }
+
+        render('profile', [
+            'user' => $this->user->findById($userId),
+            'success' => 'Profile updated.'
+        ]);
+    }
+
+    public function changePassword(): void
+    {
+        require_auth();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            exit;
+        }
+
+        if (!csrf_valid($_POST['csrf_token'] ?? null)) {
+            http_response_code(403);
+            exit('Invalid request.');
+        }
+
+        $userId = current_user_id();
+
+        $currentPassword = $_POST['current_password'] ?? '';
+        $newPassword = $_POST['password'] ?? '';
+        $confirmation = $_POST['password_confirmation'] ?? '';
+
+        $hash = $this->user->findPasswordHashById($userId);
+
+        if (!$hash || !password_verify($currentPassword, $hash)) {
+            render('profile', [
+                'errors' => ['Current password is incorrect.']
+            ]);
+            return;
+        }
+
+        if (!$this->validatePassword($newPassword, $confirmation)) {
+            render('profile', [
+                'errors' => ['New password does not meet requirements.']
+            ]);
+            return;
+        }
+
+        $this->user->updatePassword(
+            $userId,
+            password_hash($newPassword, PASSWORD_DEFAULT)
+        );
+
+        session_regenerate_id(true);
+
+        render('profile', [
+            'success' => 'Password updated.'
+        ]);
+    }
+
+    private function validatePassword(
+        string $password,
+        string $confirmation
+    ): bool {
+        return strlen($password) >= 12
+            && strlen($password) <= 4096
+            && $password === $confirmation;
+    }
+
+    private function buildTokenUrl(
+        string $path,
+        string $token
+    ): string {
+        $baseUrl = rtrim(
+            getenv('APP_URL') ?: 'http://localhost:8080',
+            '/'
+        );
+
+        return $baseUrl . $path . '?token=' . urlencode($token);
+    }
+
+    private function sendMail(
+        string $to,
+        string $subject,
+        string $message
+    ): bool {
+        $from = getenv('MAIL_FROM');
+
+        if (!$from) {
+            error_log('MAIL_FROM is not configured.');
+            return false;
+        }
+
+        $headers = [
+            'From: ' . $from,
+            'Content-Type: text/plain; charset=UTF-8'
+        ];
+
+        return mail($to, $subject, $message, implode("\r\n", $headers));
+    }
 }

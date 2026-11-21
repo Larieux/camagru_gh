@@ -1,12 +1,37 @@
-<!DOCTYPE html>
+<section class="hero">
 
+    <div class="hero-content">
 
-<?php
-    view('header', ['title' => 'home']);
-?>
+        <p class="subtitle">
+            remember to seize the means of photographic superposition
+        </p>
 
-<main>
-    <h1>HOME IS WHERE YOU MALADAPTIVE DAYDREAM THE MOST</h1>
-</main>
+        <div class="hero-actions">
 
-<?php view('footer') ?>
+            <?php if (is_logged_in()): ?>
+
+                <a href="/editor" class="btn btn-primary">
+                    Open the studio
+                </a>
+
+            <?php else: ?>
+
+                <a href="/register" class="btn btn-primary">
+                    Get started
+                </a>
+
+                <a href="/login" class="btn btn-secondary">
+                    Login
+                </a>
+
+            <?php endif; ?>
+
+            <a href="/gallery" class="btn btn-secondary">
+                Explore gallery
+            </a>
+
+        </div>
+
+    </div>
+
+</section>

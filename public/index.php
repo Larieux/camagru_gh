@@ -5,19 +5,52 @@ defined('APPLICATION_PATH') || define('APPLICATION_PATH',realpath(dirname(__FILE
 const DS    = DIRECTORY_SEPARATOR;
 
 require APPLICATION_PATH . DS . 'config' . DS . 'config.php';
+require_once APPLICATION_PATH . DS . 'src' . DS . 'controllers' . DS . 'authController.php';
 
-$page = get('page', 'home');
-$model = $config['MODEL_PATH'] . $page . '.php';
-$view = $config['VIEW_PATH'] . $page . '.phtml';
-$_404 = $config['VIEW_PATH'] . '404.phtml';
+$auth = new AuthController($pdo);
 
-$main_content = $_404;
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$method = $_SERVER['REQUEST_METHOD'];
 
-if(file_exists($view))
-{
-    $main_content = $view;
+switch ($path) {
+    case '/':
+        render('home');
+        break;
+
+    case '/register':
+        $auth->register();
+        break;
+
+    case '/login':
+        $auth->login();
+        break;
+
+    case '/logout':
+        $auth->logout();
+        break;
+
+    case '/verify':
+        $auth->verify();
+        break;
+
+    case '/forgot-password':
+        $auth->forgotPassword();
+        break;
+
+    case '/reset-password':
+        $auth->resetPassword();
+        break;
+
+    case '/profile':
+        $auth->updateProfile();
+        break;
+
+    case '/change-password':
+        $auth->changePassword();
+        break;
+
+    default:
+        http_response_code(404);
+        render('404');
+        break;
 }
-
-include $config['INC_PATH']. 'layout.phtml';
-
-?>
